@@ -1,6 +1,6 @@
 import uuid
 
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse
 from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, OpenApiResponse, extend_schema
@@ -17,6 +17,9 @@ from storage.serializers import (
     FolderContentsSerializer,
     FolderSerializer,
 )
+
+
+MAX_HEAD_BYTES = 4096
 
 
 class OwnedQuerysetMixin:
@@ -91,12 +94,29 @@ class FileViewSet(
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                "head", OpenApiTypes.INT, description=f"Return only the first N bytes (max {MAX_HEAD_BYTES})."
+            ),
+        ],
         responses={(200, "application/octet-stream"): OpenApiResponse(OpenApiTypes.BINARY)},
     )
     @action(detail=True)
-    def download(self, request: Request, pk=None) -> FileResponse:
-        """Raw ciphertext (iv || ciphertext). Decryption happens in the browser."""
+    def download(self, request: Request, pk=None) -> HttpResponse:
+        """Raw ciphertext (iv || ciphertext). Decryption happens in the browser.
+
+        ``?head=N`` returns just the first bytes, for the "server's eyes" hex view.
+        """
         file = self.get_object()
+        if (head := request.query_params.get("head")) is not None:
+            try:
+                limit = min(max(int(head), 1), MAX_HEAD_BYTES)
+            except ValueError:
+                raise serializers.ValidationError({"head": "Must be an integer."})
+            with file.blob.open("rb") as blob:
+                response = HttpResponse(blob.read(limit), content_type="application/octet-stream")
+            response["Cache-Control"] = "no-store"
+            return response
         response = FileResponse(file.blob.open("rb"), content_type="application/octet-stream")
         response["Cache-Control"] = "no-store"
         return response

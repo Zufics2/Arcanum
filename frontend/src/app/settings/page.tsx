@@ -3,6 +3,7 @@
 import { DeleteOutlined, KeyOutlined, LockOutlined, UploadOutlined } from "@ant-design/icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { Alert, App, Button, Card, Flex, Form, Input, Progress, Space, Tag, Typography, Upload, theme } from "antd";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import PasswordPrompt from "@/components/PasswordPrompt";
@@ -10,7 +11,7 @@ import RecoveryKeyModal from "@/components/RecoveryKeyModal";
 import UserAvatar from "@/components/UserAvatar";
 import { useCustomAvatarUrl, useMe } from "@/hooks/useProfile";
 import { apiErrorMessage, hasFieldError } from "@/lib/api";
-import { changePassword, disableRecoveryKey } from "@/lib/auth";
+import { changePassword, deleteAccount, disableRecoveryKey } from "@/lib/auth";
 import { DEFAULT_AVATARS, defaultAvatarUrl } from "@/lib/avatars";
 import { formatBytes } from "@/lib/format";
 import { deleteAvatar, setDefaultAvatar, uploadAvatar } from "@/lib/profile";
@@ -287,6 +288,57 @@ function StorageCard() {
   );
 }
 
+function DangerCard() {
+  const router = useRouter();
+  const { message } = App.useApp();
+  const { token } = theme.useToken();
+  const username = useAuthStore((s) => s.session?.username ?? "");
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Card title="Опасная зона" style={{ borderColor: token.colorErrorBorder }}>
+      <Flex justify="space-between" align="center" gap={16} wrap>
+        <div>
+          <Typography.Text strong>Удалить аккаунт</Typography.Text>
+          <br />
+          <Typography.Text type="secondary">
+            Все файлы, папки, ссылки и фото профиля будут удалены с сервера безвозвратно.
+          </Typography.Text>
+        </div>
+        <Button danger icon={<DeleteOutlined />} onClick={() => setOpen(true)}>
+          Удалить аккаунт
+        </Button>
+      </Flex>
+      {open && (
+        <PasswordPrompt
+          title={`Удалить аккаунт ${username}?`}
+          okText="Удалить навсегда"
+          danger
+          description={
+            <Alert
+              type="error"
+              showIcon
+              title="Это действие нельзя отменить"
+              description="Данные удаляются с сервера сразу. Ключ восстановления тоже перестанет работать."
+            />
+          }
+          onSubmit={async (password) => {
+            try {
+              await deleteAccount(password);
+            } catch (err) {
+              if (!hasFieldError(err, "auth_hash")) message.error(apiErrorMessage(err));
+              throw err;
+            }
+            message.success("Аккаунт удалён");
+            router.replace("/drive"); // another unlocked account, or the login page via AppShell
+          }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </Card>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <Flex vertical gap={16} style={{ maxWidth: 800, margin: "0 auto" }}>
@@ -297,6 +349,7 @@ export default function SettingsPage() {
       <PasswordCard />
       <RecoveryCard />
       <StorageCard />
+      <DangerCard />
     </Flex>
   );
 }

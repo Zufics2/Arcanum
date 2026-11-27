@@ -41,9 +41,11 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "corsheaders",
     "drf_spectacular",
+    "drf_spectacular_sidecar",  # self-hosted Swagger UI assets (no third-party CDN)
     # Local
     "accounts",
     "storage",
+    "sharing",
 ]
 
 MIDDLEWARE = [
@@ -126,6 +128,11 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Zero-knowledge cloud storage. The server only ever sees ciphertext.",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # Serve Swagger UI from our own static files instead of cdn.jsdelivr.net:
+    # no third-party scripts, and it works under the strict CSP set in nginx.
+    "SWAGGER_UI_DIST": "SIDECAR",
+    "SWAGGER_UI_FAVICON_HREF": "SIDECAR",
+    "REDOC_DIST": "SIDECAR",
 }
 
 # The refresh token is also kept in an httpOnly cookie, so a page reload keeps the session

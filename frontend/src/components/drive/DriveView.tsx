@@ -4,12 +4,14 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  EyeOutlined,
   FolderAddOutlined,
   HomeOutlined,
+  ShareAltOutlined,
   SwapOutlined,
 } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { App, Breadcrumb, Button, Flex, Result, type MenuProps } from "antd";
+import { Alert, App, Breadcrumb, Button, Flex, Result, type MenuProps } from "antd";
 import axios from "axios";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -18,8 +20,13 @@ import { useState } from "react";
 import FileTable from "@/components/drive/FileTable";
 import MoveModal from "@/components/drive/MoveModal";
 import NameModal from "@/components/drive/NameModal";
+import PreviewModal from "@/components/drive/PreviewModal";
+import ServerFileModal from "@/components/drive/ServerFileModal";
+import ServerViewToggle from "@/components/drive/ServerViewToggle";
+import ShareModal from "@/components/drive/ShareModal";
 import UploadZone from "@/components/drive/UploadZone";
 import { apiErrorMessage } from "@/lib/api";
+import { previewType } from "@/lib/preview";
 import {
   createFolder,
   deleteFile,
@@ -31,13 +38,18 @@ import {
   renameFile,
   renameFolder,
   saveBlob,
+  type DriveFile,
   type DriveItem,
 } from "@/lib/storage";
+import { useUiStore } from "@/stores/uiStore";
 
 type Dialog =
   | { type: "create" }
   | { type: "rename"; item: DriveItem }
   | { type: "move"; item: DriveItem }
+  | { type: "share"; item: DriveFile }
+  | { type: "preview"; item: DriveFile }
+  | { type: "server-file"; item: DriveFile }
   | null;
 
 export default function DriveView({ folderId }: { folderId: string | null }) {
@@ -45,6 +57,7 @@ export default function DriveView({ folderId }: { folderId: string | null }) {
   const queryClient = useQueryClient();
   const { message, modal } = App.useApp();
   const [dialog, setDialog] = useState<Dialog>(null);
+  const serverView = useUiStore((s) => s.serverView);
 
   const { data, isPending, error } = useQuery({
     queryKey: ["folder", folderId ?? "root"],
@@ -97,10 +110,22 @@ export default function DriveView({ folderId }: { folderId: string | null }) {
         run(() => (item.kind === "folder" ? deleteFolder(item.id) : deleteFile(item.id)), "Удалено").catch(() => {}),
     });
 
+  /** Click on a file: preview it, or show its ciphertext in "server's eyes" mode. */
+  const openFile = (item: DriveItem) => {
+    if (item.kind !== "file") return;
+    if (serverView) setDialog({ type: "server-file", item });
+    else if (previewType(item.name)) setDialog({ type: "preview", item });
+    else void download(item);
+  };
+
   const menuFor = (item: DriveItem): MenuProps => ({
     items: [
       ...(item.kind === "file"
-        ? [{ key: "download", icon: <DownloadOutlined />, label: "Скачать", disabled: item.name === null }]
+        ? [
+            ...(previewType(item.name) ? [{ key: "open", icon: <EyeOutlined />, label: "Открыть" }] : []),
+            { key: "download", icon: <DownloadOutlined />, label: "Скачать", disabled: item.name === null },
+            { key: "share", icon: <ShareAltOutlined />, label: "Поделиться", disabled: item.name === null },
+          ]
         : []),
       { key: "rename", icon: <EditOutlined />, label: "Переименовать", disabled: item.name === null },
       { key: "move", icon: <SwapOutlined />, label: "Переместить" },
@@ -109,7 +134,9 @@ export default function DriveView({ folderId }: { folderId: string | null }) {
     ],
     onClick: ({ key, domEvent }) => {
       domEvent.stopPropagation();
+      if (key === "open" && item.kind === "file") setDialog({ type: "preview", item });
       if (key === "download") void download(item);
+      if (key === "share" && item.kind === "file") setDialog({ type: "share", item });
       if (key === "rename") setDialog({ type: "rename", item });
       if (key === "move") setDialog({ type: "move", item });
       if (key === "delete") confirmDelete(item);
@@ -134,25 +161,45 @@ export default function DriveView({ folderId }: { folderId: string | null }) {
 
   const breadcrumbItems = [
     { key: "root", title: <Link href="/drive"><HomeOutlined /> Мой диск</Link> },
-    ...(data?.path ?? []).map((p, i, all) => ({
-      key: p.id,
-      title: i === all.length - 1 ? (p.name ?? "…") : <Link href={`/drive/${p.id}`}>{p.name ?? "…"}</Link>,
-    })),
+    ...(data?.path ?? []).map((p, i, all) => {
+      const label = serverView ? <code>{p.encryptedName.slice(0, 16)}…</code> : (p.name ?? "…");
+      return { key: p.id, title: i === all.length - 1 ? label : <Link href={`/drive/${p.id}`}>{label}</Link> };
+    }),
   ];
 
   return (
     <Flex vertical gap={16}>
       <Flex justify="space-between" align="center" wrap gap={8}>
         <Breadcrumb items={breadcrumbItems} />
-        <Button icon={<FolderAddOutlined />} onClick={() => setDialog({ type: "create" })}>
-          Новая папка
-        </Button>
+        <Flex align="center" gap={16}>
+          <ServerViewToggle />
+          <Button icon={<FolderAddOutlined />} onClick={() => setDialog({ type: "create" })}>
+            Новая папка
+          </Button>
+        </Flex>
       </Flex>
+
+      {serverView && (
+        <Alert
+          type="warning"
+          showIcon
+          icon={<EyeOutlined />}
+          title="Так ваш диск видит сервер"
+          description="Имена папок и файлов, ключи и содержимое — зашифрованный base64 и случайные байты. Сервер знает только структуру папок, размеры и время загрузки. Нажмите на файл, чтобы увидеть его байты."
+        />
+      )}
 
       {/* key resets the upload list when navigating to another folder */}
       <UploadZone key={folderId ?? "root"} folderId={folderId} onUploaded={refresh} />
 
-      <FileTable items={data?.items ?? []} loading={isPending} menuFor={menuFor} onOpenFolder={openFolder} />
+      <FileTable
+        items={data?.items ?? []}
+        loading={isPending}
+        serverView={serverView}
+        menuFor={menuFor}
+        onOpenFolder={openFolder}
+        onOpenFile={openFile}
+      />
 
       {dialog?.type === "create" && (
         <NameModal
@@ -174,6 +221,9 @@ export default function DriveView({ folderId }: { folderId: string | null }) {
           onClose={() => setDialog(null)}
         />
       )}
+      {dialog?.type === "share" && <ShareModal file={dialog.item} onClose={() => setDialog(null)} />}
+      {dialog?.type === "preview" && <PreviewModal file={dialog.item} onClose={() => setDialog(null)} />}
+      {dialog?.type === "server-file" && <ServerFileModal file={dialog.item} onClose={() => setDialog(null)} />}
       {dialog?.type === "move" && (
         <MoveModal
           item={dialog.item}

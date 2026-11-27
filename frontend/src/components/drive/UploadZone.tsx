@@ -44,7 +44,7 @@ export default function UploadZone({ folderId, onUploaded }: UploadZoneProps) {
       </p>
       <p className="ant-upload-text">Нажмите или перетащите файлы для загрузки</p>
       <p className="ant-upload-hint">
-        Файлы шифруются в браузере до отправки. Максимальный размер 200 МБ.
+        Максимальный размер 200 МБ.
       </p>
     </Upload.Dragger>
   );

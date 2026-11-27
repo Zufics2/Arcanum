@@ -20,3 +20,10 @@ def test_openapi_schema_is_public():
 
     assert response.status_code == 200
     assert b"Arcanum API" in response.content
+
+
+def test_swagger_ui_uses_no_third_party_cdn():
+    html = APIClient().get(reverse("docs")).content.decode()
+
+    assert "cdn.jsdelivr.net" not in html
+    assert "/static/drf_spectacular_sidecar/swagger-ui-dist/" in html

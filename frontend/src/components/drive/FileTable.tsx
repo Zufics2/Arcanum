@@ -1,7 +1,7 @@
 "use client";
 
 import { FileOutlined, FolderFilled, MoreOutlined, WarningOutlined } from "@ant-design/icons";
-import { Button, Dropdown, Space, Table, Typography, type MenuProps, type TableColumnsType } from "antd";
+import { Button, Dropdown, Space, Table, Tooltip, Typography, type MenuProps, type TableColumnsType } from "antd";
 import dayjs from "dayjs";
 import { createContext, useContext, type HTMLAttributes } from "react";
 
@@ -26,9 +26,35 @@ function ContextMenuRow({ item, ...rest }: HTMLAttributes<HTMLTableRowElement> &
 const byKindThenName = (a: DriveItem, b: DriveItem) =>
   a.kind !== b.kind ? (a.kind === "folder" ? -1 : 1) : (a.name ?? "").localeCompare(b.name ?? "", "ru");
 
-function ItemName({ item, onOpenFolder }: { item: DriveItem; onOpenFolder: (id: string) => void }) {
+function truncateMiddle(value: string, max = 40): string {
+  return value.length <= max ? value : `${value.slice(0, max - 12)}…${value.slice(-8)}`;
+}
+
+interface ItemNameProps {
+  item: DriveItem;
+  serverView: boolean;
+  onOpenFolder: (id: string) => void;
+  onOpenFile: (item: DriveItem) => void;
+}
+
+function ItemName({ item, serverView, onOpenFolder, onOpenFile }: ItemNameProps) {
   const icon =
     item.kind === "folder" ? <FolderFilled style={{ color: "#f5b301" }} /> : <FileOutlined />;
+  const open = () => (item.kind === "folder" ? onOpenFolder(item.id) : onOpenFile(item));
+
+  if (serverView) {
+    return (
+      <Space>
+        {icon}
+        <Tooltip title={<span style={{ wordBreak: "break-all" }}>{item.encryptedName}</span>}>
+          <Typography.Link code onClick={open}>
+            {truncateMiddle(item.encryptedName)}
+          </Typography.Link>
+        </Tooltip>
+      </Space>
+    );
+  }
+
   const label =
     item.name ?? (
       <Typography.Text type="danger">
@@ -39,11 +65,7 @@ function ItemName({ item, onOpenFolder }: { item: DriveItem; onOpenFolder: (id: 
   return (
     <Space>
       {icon}
-      {item.kind === "folder" ? (
-        <Typography.Link onClick={() => onOpenFolder(item.id)}>{label}</Typography.Link>
-      ) : (
-        label
-      )}
+      {item.name === null ? label : <Typography.Link onClick={open}>{label}</Typography.Link>}
     </Space>
   );
 }
@@ -51,25 +73,30 @@ function ItemName({ item, onOpenFolder }: { item: DriveItem; onOpenFolder: (id: 
 interface FileTableProps {
   items: DriveItem[];
   loading: boolean;
+  serverView: boolean;
   menuFor: MenuFor;
   onOpenFolder: (id: string) => void;
+  onOpenFile: (item: DriveItem) => void;
 }
 
-export default function FileTable({ items, loading, menuFor, onOpenFolder }: FileTableProps) {
+export default function FileTable({ items, loading, serverView, menuFor, onOpenFolder, onOpenFile }: FileTableProps) {
   const columns: TableColumnsType<DriveItem> = [
     {
-      title: "Имя",
+      title: serverView ? "encrypted_name" : "Имя",
       key: "name",
       sorter: byKindThenName,
       defaultSortOrder: "ascend",
-      render: (_, item) => <ItemName item={item} onOpenFolder={onOpenFolder} />,
+      render: (_, item) => (
+        <ItemName item={item} serverView={serverView} onOpenFolder={onOpenFolder} onOpenFile={onOpenFile} />
+      ),
     },
     {
-      title: "Размер",
+      title: serverView ? "size" : "Размер",
       key: "size",
-      width: 120,
+      width: 140,
       sorter: (a, b) => (a.kind === "file" ? a.size : -1) - (b.kind === "file" ? b.size : -1),
-      render: (_, item) => (item.kind === "file" ? formatBytes(item.size) : "—"),
+      render: (_, item) =>
+        item.kind !== "file" ? "—" : serverView ? `${item.encryptedSize.toLocaleString("ru")} Б` : formatBytes(item.size),
     },
     {
       title: "Создан",
@@ -99,7 +126,12 @@ export default function FileTable({ items, loading, menuFor, onOpenFolder }: Fil
         loading={loading}
         pagination={false}
         components={{ body: { row: ContextMenuRow } }}
-        onRow={(item) => ({ item, onDoubleClick: () => item.kind === "folder" && onOpenFolder(item.id) }) as HTMLAttributes<HTMLTableRowElement>}
+        onRow={(item) =>
+          ({
+            item,
+            onDoubleClick: () => (item.kind === "folder" ? onOpenFolder(item.id) : onOpenFile(item)),
+          }) as HTMLAttributes<HTMLTableRowElement>
+        }
         locale={{ emptyText: "Папка пуста. Перетащите файлы сюда, чтобы загрузить." }}
       />
     </RowMenuContext.Provider>

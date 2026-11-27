@@ -157,6 +157,37 @@ export async function decryptFileKey(encrypted: string, masterKey: CryptoKey): P
   return importFileKey(await decryptBytes(masterKey, fromBase64(encrypted)));
 }
 
+// ---------- share links ----------
+// The fileKey goes into the URL fragment (#…), which the browser never sends to the server.
+
+export function toBase64Url(bytes: Uint8Array): string {
+  return toBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function fromBase64Url(value: string): Uint8Array<ArrayBuffer> {
+  const b64 = value.replace(/-/g, "+").replace(/_/g, "/");
+  return fromBase64(b64 + "=".repeat((4 - (b64.length % 4)) % 4));
+}
+
+/** Raw fileKey as base64url, for the #fragment of a share link. */
+export async function exportFileKey(fileKey: CryptoKey): Promise<string> {
+  return toBase64Url(new Uint8Array(await crypto.subtle.exportKey("raw", fileKey)));
+}
+
+export class InvalidShareKeyError extends Error {}
+
+/** Imports the key from a share link fragment (non-extractable: the recipient only decrypts). */
+export async function importSharedFileKey(fragment: string): Promise<CryptoKey> {
+  let raw: Uint8Array<ArrayBuffer>;
+  try {
+    raw = fromBase64Url(fragment);
+  } catch {
+    throw new InvalidShareKeyError();
+  }
+  if (raw.length !== KEY_BITS / 8) throw new InvalidShareKeyError();
+  return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["decrypt"]);
+}
+
 // ---------- recovery key ----------
 //
 // A random 256-bit key the user writes down. Like the password, it yields two values (via HKDF):

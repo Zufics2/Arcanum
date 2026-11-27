@@ -18,6 +18,7 @@ from accounts.models import Profile
 from accounts.serializers import (
     AvatarUploadSerializer,
     ChangePasswordSerializer,
+    DeleteAccountSerializer,
     LoginResponseSerializer,
     LoginSerializer,
     MeSerializer,
@@ -139,6 +140,21 @@ class ChangePasswordView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DeleteAccountView(APIView):
+    """Deletes the account and everything in it: files (and blobs on disk), folders, links, avatar."""
+
+    @extend_schema(request=DeleteAccountSerializer, responses={204: None})
+    def delete(self, request: Request) -> Response:
+        serializer = DeleteAccountSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            # Cascades to Profile, Folder, File, ShareLink; post_delete signals remove blobs after commit.
+            request.user.delete()
+        response = Response(status=status.HTTP_204_NO_CONTENT)
+        clear_refresh_cookie(response)
+        return response
 
 
 class RecoveryView(APIView):

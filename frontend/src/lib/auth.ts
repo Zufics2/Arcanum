@@ -183,3 +183,11 @@ export async function recoverAccount(username: string, recoveryKeyText: string, 
 
   await login(username, newPassword);
 }
+
+/** Deletes the active account with all its data. Another unlocked account (if any) takes over. */
+export async function deleteAccount(password: string): Promise<void> {
+  const session = requireSession();
+  const { authHash } = await authHashFor(session.username, password);
+  await api.delete("/auth/account/", { data: { auth_hash: authHash } });
+  await logout(); // the server already cleared the cookie; this switches to the next account or ends the session
+}

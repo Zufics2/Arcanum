@@ -72,7 +72,7 @@ export type DriveItem = DriveFolder | DriveFile;
 
 export interface FolderContents {
   folder: DriveFolder | null;
-  path: { id: string; name: string | null }[];
+  path: { id: string; name: string | null; encryptedName: string }[];
   items: DriveItem[];
 }
 
@@ -132,7 +132,13 @@ export async function listFolder(folderId: string | null): Promise<FolderContent
 
   const [folder, path, folders, files] = await Promise.all([
     data.folder ? toFolder(data.folder, masterKey) : null,
-    Promise.all(data.path.map(async (p) => ({ id: p.id, name: await tryDecrypt(masterKey, p.encrypted_name) }))),
+    Promise.all(
+      data.path.map(async (p) => ({
+        id: p.id,
+        name: await tryDecrypt(masterKey, p.encrypted_name),
+        encryptedName: p.encrypted_name,
+      })),
+    ),
     Promise.all(data.folders.map((f) => toFolder(f, masterKey))),
     Promise.all(data.files.map((f) => toFile(f, masterKey))),
   ]);
@@ -203,12 +209,21 @@ export async function uploadFile(
   });
 }
 
-/** Downloads the ciphertext, decrypts it and returns the plaintext as a Blob. */
-export async function downloadFile(file: DriveFile): Promise<Blob> {
+/** Downloads the ciphertext, decrypts it and returns the plaintext as a Blob (of the given MIME type). */
+export async function downloadFile(file: DriveFile, mime = ""): Promise<Blob> {
   const fileKey = await decryptFileKey(file.encryptedFileKey, requireMasterKey());
   const { data } = await api.get<ArrayBuffer>(`/files/${file.id}/download/`, { responseType: "arraybuffer" });
   const plaintext = await decryptBytes(fileKey, new Uint8Array(data));
-  return new Blob([plaintext]);
+  return new Blob([plaintext], { type: mime });
+}
+
+/** The first bytes of the stored ciphertext, without decrypting: what the server actually holds. */
+export async function fetchCiphertextHead(id: string, bytes = 512): Promise<Uint8Array> {
+  const { data } = await api.get<ArrayBuffer>(`/files/${id}/download/`, {
+    params: { head: bytes },
+    responseType: "arraybuffer",
+  });
+  return new Uint8Array(data);
 }
 
 /** Triggers the browser "Save as" for a Blob. */

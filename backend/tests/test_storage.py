@@ -344,3 +344,16 @@ def test_detail_with_malformed_id_returns_404(alice):
 
     assert client.delete(reverse("file-detail", args=[uuid.uuid4()])).status_code == 404
     assert client.delete("/api/files/not-a-uuid/").status_code == 404
+
+
+def test_download_head_returns_first_bytes(alice):
+    client, _ = alice
+    content = os.urandom(10_000)
+    file_id = upload(client, content=content).json()["id"]
+
+    first = client.get(reverse("file-download", args=[file_id]), {"head": 512})
+    capped = client.get(reverse("file-download", args=[file_id]), {"head": 1_000_000})
+
+    assert first.content == content[:512]
+    assert capped.content == content[:4096]
+    assert client.get(reverse("file-download", args=[file_id]), {"head": "x"}).status_code == 400

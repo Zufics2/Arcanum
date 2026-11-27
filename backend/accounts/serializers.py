@@ -159,6 +159,10 @@ class RecoverySetupSerializer(CurrentPasswordMixin):
         profile.save(update_fields=["recovery_auth_hash", "recovery_encrypted_master_key"])
 
 
+class DeleteAccountSerializer(CurrentPasswordMixin):
+    pass
+
+
 class RecoveryDisableSerializer(CurrentPasswordMixin):
     def save(self) -> None:
         profile = self.context["request"].user.profile

@@ -23,4 +23,5 @@ pytest
 
 # Фронтенд (в frontend/.env.local: NEXT_PUBLIC_API_URL=http://localhost:8000/api)
 cd frontend && npm install && npm run dev
+npm test        # тесты криптографии (node --test, эталонные векторы PBKDF2/HKDF)
 ```
