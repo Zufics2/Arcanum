@@ -1,7 +1,7 @@
 # Arcanum
 
-Облачное хранилище с нулевым разглашением (zero-knowledge): файлы и их имена шифруются в браузере,
-сервер хранит только шифротекст.
+Облачное хранилище с нулевым разглашением. Файлы и их имена шифруются в браузере,
+сервер хранит только шифротекст
 
 ## Запуск в Docker
 
@@ -10,8 +10,8 @@ cp .env.example .env   # заполнить SECRET_KEY и POSTGRES_PASSWORD (и 
 docker compose up --build
 ```
 
-- Приложение: http://localhost
-- Документация API: http://localhost/api/docs/
+-Приложение: http://localhost
+-Документация API: http://localhost/api/docs/
 
 ## Локальная разработка
 
