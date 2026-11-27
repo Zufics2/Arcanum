@@ -1,7 +1,8 @@
 "use client";
 
 import { LockOutlined } from "@ant-design/icons";
-import { Flex, Result } from "antd";
+import { Button, Flex, Result, Space } from "antd";
+import Link from "next/link";
 
 import BackendStatus from "@/components/BackendStatus";
 
@@ -12,7 +13,19 @@ export default function Home() {
         icon={<LockOutlined />}
         title="Arcanum"
         subTitle="Облачное хранилище с нулевым разглашением"
-        extra={<BackendStatus />}
+        extra={
+          <Flex vertical align="center" gap={16}>
+            <Space>
+              <Link href="/login">
+                <Button type="primary">Войти</Button>
+              </Link>
+              <Link href="/register">
+                <Button>Регистрация</Button>
+              </Link>
+            </Space>
+            <BackendStatus />
+          </Flex>
+        }
       />
     </Flex>
   );
