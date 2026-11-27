@@ -357,3 +357,18 @@ def test_download_head_returns_first_bytes(alice):
     assert first.content == content[:512]
     assert capped.content == content[:4096]
     assert client.get(reverse("file-download", args=[file_id]), {"head": "x"}).status_code == 400
+
+
+def test_list_all_files_for_client_side_search(alice, bob):
+    client, _ = alice
+    folder = create_folder(client)
+    in_root = upload(client).json()["id"]
+    nested = upload(client, folder=folder["id"]).json()["id"]
+    upload(bob[0])  # someone else's file
+
+    response = client.get(reverse("file-list"))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert {f["id"] for f in body} == {in_root, nested}
+    assert all("blob" not in f and "encrypted_name" in f for f in body)

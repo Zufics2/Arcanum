@@ -79,6 +79,7 @@ class FolderViewSet(
 
 class FileViewSet(
     OwnedQuerysetMixin,
+    mixins.ListModelMixin,
     mixins.CreateModelMixin,
     mixins.UpdateModelMixin,
     mixins.DestroyModelMixin,
@@ -89,6 +90,12 @@ class FileViewSet(
 
     def get_serializer_class(self):
         return FileUploadSerializer if self.action == "create" else FileSerializer
+
+    @extend_schema(responses=FileSerializer(many=True))
+    def list(self, request: Request, *args, **kwargs) -> Response:
+        """Metadata of all the user's files (no content). Used for search, which runs in the browser:
+        names are encrypted, so the server cannot search them and never sees the query."""
+        return super().list(request, *args, **kwargs)
 
     # Upload is multipart; rename/move (PATCH) is JSON.
     parser_classes = [JSONParser, MultiPartParser, FormParser]

@@ -77,9 +77,23 @@ interface FileTableProps {
   menuFor: MenuFor;
   onOpenFolder: (id: string) => void;
   onOpenFile: (item: DriveItem) => void;
+  /** Search results: adds a "Location" column (parent folder path). */
+  locationOf?: (item: DriveItem) => { label: string; folderId: string | null };
+  onOpenLocation?: (folderId: string | null) => void;
+  emptyText?: string;
 }
 
-export default function FileTable({ items, loading, serverView, menuFor, onOpenFolder, onOpenFile }: FileTableProps) {
+export default function FileTable({
+  items,
+  loading,
+  serverView,
+  menuFor,
+  onOpenFolder,
+  onOpenFile,
+  locationOf,
+  onOpenLocation,
+  emptyText = "Папка пуста. Перетащите файлы сюда, чтобы загрузить.",
+}: FileTableProps) {
   const columns: TableColumnsType<DriveItem> = [
     {
       title: serverView ? "encrypted_name" : "Имя",
@@ -90,6 +104,23 @@ export default function FileTable({ items, loading, serverView, menuFor, onOpenF
         <ItemName item={item} serverView={serverView} onOpenFolder={onOpenFolder} onOpenFile={onOpenFile} />
       ),
     },
+    ...(locationOf
+      ? [
+          {
+            title: "Расположение",
+            key: "location",
+            ellipsis: true,
+            render: (_: unknown, item: DriveItem) => {
+              const { label, folderId } = locationOf(item);
+              return (
+                <Typography.Link type="secondary" onClick={() => onOpenLocation?.(folderId)}>
+                  {label}
+                </Typography.Link>
+              );
+            },
+          },
+        ]
+      : []),
     {
       title: serverView ? "size" : "Размер",
       key: "size",
@@ -132,7 +163,7 @@ export default function FileTable({ items, loading, serverView, menuFor, onOpenF
             onDoubleClick: () => (item.kind === "folder" ? onOpenFolder(item.id) : onOpenFile(item)),
           }) as HTMLAttributes<HTMLTableRowElement>
         }
-        locale={{ emptyText: "Папка пуста. Перетащите файлы сюда, чтобы загрузить." }}
+        locale={{ emptyText }}
       />
     </RowMenuContext.Provider>
   );

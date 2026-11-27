@@ -7,15 +7,16 @@ import {
   EyeOutlined,
   FolderAddOutlined,
   HomeOutlined,
+  SearchOutlined,
   ShareAltOutlined,
   SwapOutlined,
 } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Alert, App, Breadcrumb, Button, Flex, Result, type MenuProps } from "antd";
+import { Alert, App, Breadcrumb, Button, Flex, Input, Result, Typography, type MenuProps } from "antd";
 import axios from "axios";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import FileTable from "@/components/drive/FileTable";
 import MoveModal from "@/components/drive/MoveModal";
@@ -28,6 +29,7 @@ import UploadZone from "@/components/drive/UploadZone";
 import { apiErrorMessage } from "@/lib/api";
 import { previewType } from "@/lib/preview";
 import {
+  buildSearchIndex,
   createFolder,
   deleteFile,
   deleteFolder,
@@ -35,9 +37,11 @@ import {
   listFolder,
   moveFile,
   moveFolder,
+  parentOf,
   renameFile,
   renameFolder,
   saveBlob,
+  searchItems,
   type DriveFile,
   type DriveItem,
 } from "@/lib/storage";
@@ -58,13 +62,24 @@ export default function DriveView({ folderId }: { folderId: string | null }) {
   const { message, modal } = App.useApp();
   const [dialog, setDialog] = useState<Dialog>(null);
   const serverView = useUiStore((s) => s.serverView);
+  const [query, setQuery] = useState("");
+  const searching = query.trim().length > 0;
 
   const { data, isPending, error } = useQuery({
     queryKey: ["folder", folderId ?? "root"],
     queryFn: () => listFolder(folderId),
   });
 
+  // All names of the drive, decrypted locally. Loaded on first search, refreshed after any change.
+  const { data: searchIndex, isFetching: indexLoading } = useQuery({
+    queryKey: ["search-index"],
+    queryFn: buildSearchIndex,
+    enabled: searching,
+  });
+  const results = useMemo(() => (searchIndex ? searchItems(searchIndex, query) : []), [searchIndex, query]);
+
   const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ["search-index"] });
     void queryClient.invalidateQueries({ queryKey: ["folder"] });
     void queryClient.invalidateQueries({ queryKey: ["tree"] });
     void queryClient.invalidateQueries({ queryKey: ["me"] }); // storage usage
@@ -82,7 +97,10 @@ export default function DriveView({ folderId }: { folderId: string | null }) {
     }
   };
 
-  const openFolder = (id: string) => router.push(`/drive/${id}`);
+  const openFolder = (id: string | null) => {
+    setQuery("");
+    router.push(id ? `/drive/${id}` : "/drive");
+  };
 
   const download = async (item: DriveItem) => {
     if (item.kind !== "file") return;
@@ -171,7 +189,17 @@ export default function DriveView({ folderId }: { folderId: string | null }) {
     <Flex vertical gap={16}>
       <Flex justify="space-between" align="center" wrap gap={8}>
         <Breadcrumb items={breadcrumbItems} />
-        <Flex align="center" gap={16}>
+        <Flex align="center" gap={16} wrap>
+          <Input
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="Поиск по всему диску"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && setQuery("")}
+            style={{ width: 260 }}
+            aria-label="Поиск по всему диску"
+          />
           <ServerViewToggle />
           <Button icon={<FolderAddOutlined />} onClick={() => setDialog({ type: "create" })}>
             Новая папка
@@ -189,17 +217,40 @@ export default function DriveView({ folderId }: { folderId: string | null }) {
         />
       )}
 
-      {/* key resets the upload list when navigating to another folder */}
-      <UploadZone key={folderId ?? "root"} folderId={folderId} onUploaded={refresh} />
+      {searching ? (
+        <>
+          <Typography.Text type="secondary">
+            {indexLoading && !searchIndex
+              ? "Расшифровываем имена для поиска…"
+              : `Найдено: ${results.length}. Поиск идёт в вашем браузере`}
+          </Typography.Text>
+          <FileTable
+            items={results}
+            loading={indexLoading && !searchIndex}
+            serverView={serverView}
+            menuFor={menuFor}
+            onOpenFolder={openFolder}
+            onOpenFile={openFile}
+            locationOf={(item) => ({ label: searchIndex!.pathOf(parentOf(item)), folderId: parentOf(item) })}
+            onOpenLocation={openFolder}
+            emptyText="Ничего не найдено"
+          />
+        </>
+      ) : (
+        <>
+          {/* key resets the upload list when navigating to another folder */}
+          <UploadZone key={folderId ?? "root"} folderId={folderId} onUploaded={refresh} />
 
-      <FileTable
-        items={data?.items ?? []}
-        loading={isPending}
-        serverView={serverView}
-        menuFor={menuFor}
-        onOpenFolder={openFolder}
-        onOpenFile={openFile}
-      />
+          <FileTable
+            items={data?.items ?? []}
+            loading={isPending}
+            serverView={serverView}
+            menuFor={menuFor}
+            onOpenFolder={openFolder}
+            onOpenFile={openFile}
+          />
+        </>
+      )}
 
       {dialog?.type === "create" && (
         <NameModal

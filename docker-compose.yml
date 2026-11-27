@@ -18,7 +18,16 @@ services:
     build: ./backend
     restart: unless-stopped
     env_file: .env
+    # Docker-specific values override .env, so the same .env also works for local `runserver`.
     environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      DEBUG: "False"
+      # Secure (HTTPS-only) session cookie: right for the tunnel. Chrome/Firefox also accept it on
+      # http://localhost; for Safari on plain localhost set DOCKER_REFRESH_COOKIE_SECURE=False in .env.
+      REFRESH_COOKIE_SECURE: ${DOCKER_REFRESH_COOKIE_SECURE:-True}
+      # localhost + Cloudflare quick tunnels (https://<random>.trycloudflare.com) for demos
+      ALLOWED_HOSTS: ${DOCKER_ALLOWED_HOSTS:-localhost,127.0.0.1,.trycloudflare.com}
+      CSRF_TRUSTED_ORIGINS: ${DOCKER_CSRF_TRUSTED_ORIGINS:-http://localhost,https://*.trycloudflare.com}
       MEDIA_ROOT: /data/media
       STATIC_ROOT: /data/static
     volumes:

@@ -142,6 +142,10 @@ REFRESH_COOKIE_NAME = "arcanum_session"
 REFRESH_COOKIE_PATH = "/api/auth/"
 REFRESH_COOKIE_SECURE = env.bool("REFRESH_COOKIE_SECURE", default=not DEBUG)
 
+# Behind nginx (and possibly a TLS tunnel) the original scheme arrives in X-Forwarded-Proto.
+# Only the proxy sets this header in Docker; local runserver has no proxy and never sees it.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # --- Storage ---
 STORAGE_QUOTA_BYTES = env("STORAGE_QUOTA_GB") * 1024**3
 

@@ -18,7 +18,7 @@ import {
 } from "@/lib/crypto";
 import { activeSession } from "@/stores/authStore";
 
-// ---------- API shapes (as stored on the server) ----------
+// API Shapes
 
 interface FolderDto {
   id: string;
@@ -251,4 +251,51 @@ export async function moveFile(id: string, folderId: string | null): Promise<voi
 
 export async function deleteFile(id: string): Promise<void> {
   await api.delete(`/files/${id}/`);
+}
+
+// search (entirely in the browser)
+// Names are encrypted on the server, so it cannot search them. The browser fetches all metadata,
+// decrypts the names locally and filters them; the query itself never leaves the browser
+export interface SearchIndex {
+  items: DriveItem[];
+  /** "Мой диск / A / B" for a folder id (null = root). */
+  pathOf: (folderId: string | null) => string;
+}
+
+export async function buildSearchIndex(): Promise<SearchIndex> {
+  const masterKey = requireMasterKey();
+  const [{ data: folderDtos }, { data: fileDtos }] = await Promise.all([
+    api.get<FolderDto[]>("/folders/tree/"),
+    api.get<FileDto[]>("/files/"),
+  ]);
+  const [folders, files] = await Promise.all([
+    Promise.all(folderDtos.map((f) => toFolder(f, masterKey))),
+    Promise.all(fileDtos.map((f) => toFile(f, masterKey))),
+  ]);
+
+  const byId = new Map(folders.map((f) => [f.id, f]));
+  const cache = new Map<string | null, string>([[null, "Мой диск"]]);
+  const pathOf = (folderId: string | null): string => {
+    const cached = cache.get(folderId);
+    if (cached !== undefined) return cached;
+    const folder = folderId ? byId.get(folderId) : undefined;
+    const path = folder ? `${pathOf(folder.parentId)} / ${folder.name ?? "…"}` : "Мой диск";
+    cache.set(folderId, path);
+    return path;
+  };
+
+  return { items: [...folders, ...files], pathOf };
+}
+
+const normalize = (text: string) => text.toLocaleLowerCase("ru").replace(/ё/g, "е");
+
+/** Case-insensitive substring match on decrypted names ("ё" = "е"). */
+export function searchItems(index: SearchIndex, query: string): DriveItem[] {
+  const needle = normalize(query.trim());
+  if (!needle) return [];
+  return index.items.filter((item) => item.name !== null && normalize(item.name).includes(needle));
+}
+
+export function parentOf(item: DriveItem): string | null {
+  return item.kind === "folder" ? item.parentId : item.folderId;
 }
