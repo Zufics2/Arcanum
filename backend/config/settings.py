@@ -18,6 +18,7 @@ env = environ.Env(
     ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
     CORS_ALLOWED_ORIGINS=(list, []),
     CSRF_TRUSTED_ORIGINS=(list, []),
+    STORAGE_QUOTA_GB=(int, 5),
 )
 
 # Local development: read the repo-level .env if it exists.
@@ -42,6 +43,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     # Local
     "accounts",
+    "storage",
 ]
 
 MIDDLEWARE = [
@@ -115,7 +117,7 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
@@ -126,8 +128,19 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
 }
 
+# The refresh token is also kept in an httpOnly cookie, so a page reload keeps the session
+# (the user only re-enters the password to unlock keys). JS can't read the cookie;
+# encryption keys themselves are never stored anywhere but in browser memory.
+REFRESH_COOKIE_NAME = "arcanum_session"
+REFRESH_COOKIE_PATH = "/api/auth/"
+REFRESH_COOKIE_SECURE = env.bool("REFRESH_COOKIE_SECURE", default=not DEBUG)
+
+# --- Storage ---
+STORAGE_QUOTA_BYTES = env("STORAGE_QUOTA_GB") * 1024**3
+
 # --- CORS / CSRF (only needed when the frontend runs on another origin, e.g. local dev) ---
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
+CORS_ALLOW_CREDENTIALS = True  # the session cookie must travel with auth requests
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
 
 # --- Privacy: never log client IP addresses ---

@@ -1,21 +1,12 @@
 """Server-side helpers. The server never encrypts or decrypts user data."""
 
 import base64
-import binascii
 import hashlib
 import hmac
 
 from django.conf import settings
 
 SALT_BYTES = 16
-
-
-def b64decode_strict(value: str) -> bytes:
-    """Decode standard base64, raising ValueError on malformed input."""
-    try:
-        return base64.b64decode(value, validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise ValueError("Invalid base64") from exc
 
 
 def fake_salt(username: str) -> str:

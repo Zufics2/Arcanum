@@ -9,6 +9,7 @@ import { useState } from "react";
 import AuthCard from "@/components/AuthCard";
 import { apiErrorMessage } from "@/lib/api";
 import { login } from "@/lib/auth";
+import { useAuthStore } from "@/stores/authStore";
 
 interface LoginForm {
   username: string;
@@ -19,13 +20,17 @@ export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Logged in already and came here via "Add account": the current session stays unlocked.
+  const addingTo = useAuthStore((s) => s.session?.username);
 
   const onFinish = async ({ username, password }: LoginForm) => {
     setLoading(true);
     setError(null);
     try {
       await login(username, password);
-      router.replace("/drive");
+      const { returnTo, setReturnTo } = useAuthStore.getState();
+      setReturnTo(null);
+      router.replace(returnTo ?? "/drive");
     } catch (err) {
       setError(
         axios.isAxiosError(err) && err.response?.status === 401
@@ -37,7 +42,16 @@ export default function LoginPage() {
   };
 
   return (
-    <AuthCard title="Вход">
+    <AuthCard title={addingTo ? "Добавить аккаунт" : "Вход"}>
+      {addingTo && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          title={`Вы остаётесь в аккаунте ${addingTo}`}
+          description="Переключаться между аккаунтами можно в меню профиля."
+        />
+      )}
       {error && <Alert type="error" showIcon title={error} style={{ marginBottom: 16 }} />}
       <Form layout="vertical" onFinish={onFinish} requiredMark={false} disabled={loading}>
         <Form.Item name="username" label="Логин" rules={[{ required: true, message: "Введите логин" }]}>
@@ -46,6 +60,9 @@ export default function LoginPage() {
         <Form.Item name="password" label="Пароль" rules={[{ required: true, message: "Введите пароль" }]}>
           <Input.Password autoComplete="current-password" />
         </Form.Item>
+        <div style={{ textAlign: "right", marginTop: -16, marginBottom: 16 }}>
+          <Link href="/recover">Забыли пароль?</Link>
+        </div>
         <Button type="primary" htmlType="submit" block loading={loading}>
           {loading ? "Расшифровываем ключи…" : "Войти"}
         </Button>

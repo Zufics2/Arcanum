@@ -5,10 +5,12 @@ import { Button, Flex, Result, Space } from "antd";
 import Link from "next/link";
 
 import BackendStatus from "@/components/BackendStatus";
+import ThemeToggle from "@/components/ThemeToggle";
 
 export default function Home() {
   return (
     <Flex align="center" justify="center" style={{ minHeight: "100vh" }}>
+      <ThemeToggle style={{ position: "fixed", top: 16, right: 16 }} />
       <Result
         icon={<LockOutlined />}
         title="Arcanum"

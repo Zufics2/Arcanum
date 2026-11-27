@@ -129,3 +129,105 @@ export async function encryptMasterKey(masterKey: CryptoKey, userKey: CryptoKey)
 export async function decryptMasterKey(encrypted: string, userKey: CryptoKey): Promise<CryptoKey> {
   return importMasterKey(await decryptBytes(userKey, fromBase64(encrypted)));
 }
+
+// ---------- file keys ----------
+
+/** Plaintext size limit: files are encrypted whole in memory. */
+export const MAX_FILE_BYTES = 200 * 1024 * 1024;
+/** Bytes added by encryption: 12-byte IV + 16-byte GCM tag. */
+export const ENCRYPTION_OVERHEAD_BYTES = IV_BYTES + 16;
+
+// A fileKey is extractable so it can be put into a share link (#fragment) later.
+async function importFileKey(raw: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
+  return crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, true, ["encrypt", "decrypt"]);
+}
+
+/** A fresh random key for one file (encrypts its content and its name). */
+export async function generateFileKey(): Promise<CryptoKey> {
+  return importFileKey(randomBytes(KEY_BITS / 8));
+}
+
+/** Returns base64(iv || fileKey encrypted with masterKey). */
+export async function encryptFileKey(fileKey: CryptoKey, masterKey: CryptoKey): Promise<string> {
+  const raw = new Uint8Array(await crypto.subtle.exportKey("raw", fileKey));
+  return toBase64(await encryptBytes(masterKey, raw));
+}
+
+export async function decryptFileKey(encrypted: string, masterKey: CryptoKey): Promise<CryptoKey> {
+  return importFileKey(await decryptBytes(masterKey, fromBase64(encrypted)));
+}
+
+// ---------- recovery key ----------
+//
+// A random 256-bit key the user writes down. Like the password, it yields two values (via HKDF):
+//   recoveryKey ─HKDF("arcanum-recovery-auth")─► recoveryAuthHash → server (Django hashes it again)
+//               └HKDF("arcanum-recovery-enc") ─► recoveryEncKey   → encrypts a copy of masterKey
+// No slow KDF is needed: 256 random bits cannot be brute-forced, unlike a human password.
+
+export const RECOVERY_KEY_BYTES = 32;
+const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+export function generateRecoveryKey(): Uint8Array<ArrayBuffer> {
+  return randomBytes(RECOVERY_KEY_BYTES);
+}
+
+/** Human-friendly form: base32 in groups of 4, e.g. "ABCD-EFGH-…" (52 characters). */
+export function formatRecoveryKey(bytes: Uint8Array): string {
+  let bits = 0;
+  let value = 0;
+  let out = "";
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += BASE32[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += BASE32[(value << (5 - bits)) & 31];
+  return out.match(/.{1,4}/g)!.join("-");
+}
+
+export class InvalidRecoveryKeyError extends Error {}
+
+/** Parses what the user typed: case, spaces and dashes don't matter. */
+export function parseRecoveryKey(text: string): Uint8Array<ArrayBuffer> {
+  const clean = text.toUpperCase().replace(/[^A-Z2-7]/g, "");
+  if (clean.length !== Math.ceil((RECOVERY_KEY_BYTES * 8) / 5)) throw new InvalidRecoveryKeyError();
+  const out = new Uint8Array(RECOVERY_KEY_BYTES);
+  let bits = 0;
+  let value = 0;
+  let index = 0;
+  for (const char of clean) {
+    value = (value << 5) | BASE32.indexOf(char);
+    bits += 5;
+    if (bits >= 8) {
+      if (index < out.length) out[index++] = (value >>> (bits - 8)) & 255;
+      bits -= 8;
+    }
+  }
+  return out;
+}
+
+export interface RecoveryKeys {
+  authHash: string;
+  encKey: CryptoKey;
+}
+
+export async function deriveRecoveryKeys(recoveryKey: Uint8Array<ArrayBuffer>): Promise<RecoveryKeys> {
+  const base = await crypto.subtle.importKey("raw", recoveryKey, "HKDF", false, ["deriveBits", "deriveKey"]);
+  const hkdf = (info: string): HkdfParams => ({
+    name: "HKDF",
+    hash: "SHA-256",
+    salt: new Uint8Array(0),
+    info: encoder.encode(info),
+  });
+  const [authBits, encKey] = await Promise.all([
+    crypto.subtle.deriveBits(hkdf("arcanum-recovery-auth"), base, KEY_BITS),
+    crypto.subtle.deriveKey(hkdf("arcanum-recovery-enc"), base, { name: "AES-GCM", length: KEY_BITS }, false, [
+      "encrypt",
+      "decrypt",
+    ]),
+  ]);
+  return { authHash: toBase64(new Uint8Array(authBits)), encKey };
+}
